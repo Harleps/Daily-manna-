@@ -1,0 +1,237 @@
+// server.js - Backend API for Daily Manna App
+// Install dependencies: npm install express axios cheerio cors dotenv
+
+const express = require('express');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const cors = require('cors');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public')); // Serve frontend files
+
+// Cache to avoid repeated requests
+let cache = {
+  data: null,
+  timestamp: null,
+  ttl: 3600000 // 1 hour in milliseconds
+};
+
+// Helper function to parse Daily Manna content
+async function fetchDailyManna() {
+  try {
+    // Check cache first
+    const now = Date.now();
+    if (cache.data && cache.timestamp && (now - cache.timestamp) < cache.ttl) {
+      console.log('Returning cached data');
+      return cache.data;
+    }
+
+    console.log('Fetching fresh data from dailymanna.app...');
+    const response = await axios.get('https://dailymanna.app/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 10000
+    });
+
+    const html = response.data;
+    const $ = cheerio.load(html);
+
+    // Extract title
+    const titleElements = $('h6');
+    const title = $(titleElements[0]).text().trim() || 'Daily Devotional';
+    
+    // Extract date
+    const date = $(titleElements[1]).text().trim() || new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Extract key verse from first blockquote
+    let keyVerse = '';
+    const firstBlockquote = $('blockquote').first();
+    if (firstBlockquote.length) {
+      keyVerse = firstBlockquote.text()
+        .replace('Key Verse', '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    // Extract message
+    let message = '';
+    const messageHeading = $('h2:contains("Message")');
+    if (messageHeading.length) {
+      let currentElement = messageHeading.next();
+      while (currentElement.length && currentElement.is('p')) {
+        const text = currentElement.text().trim();
+        if (text && !text.includes('Thought for the day')) {
+          message += text + '\n\n';
+        }
+        currentElement = currentElement.next();
+      }
+    }
+
+    // Extract thought for the day
+    let thought = '';
+    $('blockquote').each((i, elem) => {
+      const text = $(elem).text();
+      if (text.includes('Thought for the day')) {
+        thought = text.replace('Thought for the day', '').trim();
+      }
+    });
+
+    // Extract audio URL
+    const audioLink = $('a[href*=".mp3"]').attr('href') || null;
+
+    // Extract Bible reading
+    let bibleReading = '';
+    const bibleLink = $('a[href*="kingjamesbibleonline.org"]');
+    if (bibleLink.length) {
+      bibleReading = bibleLink.text().trim();
+    }
+
+    const devotionalData = {
+      title,
+      date,
+      keyVerse,
+      message: message.trim(),
+      thought,
+      audioUrl: audioLink,
+      bibleReading,
+      fetchedAt: new Date().toISOString()
+    };
+
+    // Update cache
+    cache.data = devotionalData;
+    cache.timestamp = now;
+
+    return devotionalData;
+
+  } catch (error) {
+    console.error('Error fetching Daily Manna:', error.message);
+    throw error;
+  }
+}
+
+// API Routes
+
+// Get today's devotional
+app.get('/api/devotional', async (req, res) => {
+  try {
+    const devotional = await fetchDailyManna();
+    res.json({
+      success: true,
+      data: devotional
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch devotional',
+      message: error.message
+    });
+  }
+});
+
+// Get devotional by date (if you want to expand)
+app.get('/api/devotional/:date', async (req, res) => {
+  // This would require scraping archive pages
+  res.status(501).json({
+    success: false,
+    message: 'Archive feature not yet implemented'
+  });
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Daily Manna API is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Clear cache (for admin use)
+app.post('/api/cache/clear', (req, res) => {
+  cache = {
+    data: null,
+    timestamp: null,
+    ttl: 3600000
+  };
+  res.json({
+    success: true,
+    message: 'Cache cleared'
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Daily Manna API</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+          }
+          h1 { color: #d97706; }
+          code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+          }
+          .endpoint {
+            background: #f9fafb;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #d97706;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>📖 Daily Manna API</h1>
+        <p>Welcome to the Daily Manna API. This service provides daily Christian devotionals.</p>
+        
+        <h2>Available Endpoints:</h2>
+        
+        <div class="endpoint">
+          <strong>GET /api/devotional</strong>
+          <p>Get today's devotional content</p>
+        </div>
+        
+        <div class="endpoint">
+          <strong>GET /api/health</strong>
+          <p>Check API status</p>
+        </div>
+        
+        <div class="endpoint">
+          <strong>POST /api/cache/clear</strong>
+          <p>Clear the cache (force fresh fetch)</p>
+        </div>
+        
+        <h2>Example Usage:</h2>
+        <code>fetch('/api/devotional').then(r => r.json()).then(console.log)</code>
+        
+        <p><a href="/api/devotional">Try it now →</a></p>
+      </body>
+    </html>
+  `);
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Daily Manna API server running on port ${PORT}`);
+  console.log(`📖 Access API at: http://localhost:${PORT}/api/devotional`);
+});
