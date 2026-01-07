@@ -1,0 +1,209 @@
+# ============================================
+# DAILY MANNA - RENDER DEPLOYMENT SETUP
+# ============================================
+
+# ---------------------------------------------
+# STEP 1: CREATE PROJECT STRUCTURE
+# ---------------------------------------------
+
+# Create main project folder
+mkdir daily-manna-app
+cd daily-manna-app
+
+# Initialize git
+git init
+
+# Create backend folder
+mkdir backend
+cd backend
+
+# Initialize backend
+npm init -y
+
+# Install backend dependencies
+npm install express axios cheerio cors dotenv
+
+# Create backend files
+touch server.js .env .gitignore
+
+cd ..
+
+# Create frontend folder
+mkdir frontend
+cd frontend
+
+# Create React app
+npx create-react-app .
+
+# Install frontend dependencies
+npm install lucide-react
+
+cd ..
+
+# ---------------------------------------------
+# FILE: backend/package.json
+# ---------------------------------------------
+cat > backend/package.json << 'EOF'
+{
+  "name": "daily-manna-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Daily Manna devotional app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  }
+}
+EOF
+
+# ---------------------------------------------
+# FILE: backend/.env
+# ---------------------------------------------
+cat > backend/.env << 'EOF'
+PORT=3001
+NODE_ENV=production
+EOF
+
+# ---------------------------------------------
+# FILE: backend/.gitignore
+# ---------------------------------------------
+cat > backend/.gitignore << 'EOF'
+node_modules/
+.env
+.DS_Store
+*.log
+EOF
+
+# ---------------------------------------------
+# FILE: frontend/.gitignore
+# ---------------------------------------------
+cat > frontend/.gitignore << 'EOF'
+node_modules/
+build/
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+EOF
+
+# ---------------------------------------------
+# FILE: .gitignore (root)
+# ---------------------------------------------
+cat > .gitignore << 'EOF'
+node_modules/
+.DS_Store
+.env
+*.log
+EOF
+
+# ---------------------------------------------
+# FILE: README.md
+# ---------------------------------------------
+cat > README.md << 'EOF'
+# Daily Manna Devotional App
+
+A Christian devotional app that fetches daily content from dailymanna.app
+
+## Structure
+- `/backend` - Node.js API server
+- `/frontend` - React web app
+
+## Deployment
+- Backend: Render Web Service
+- Frontend: Render Static Site
+
+## Local Development
+
+### Backend
+```bash
+cd backend
+npm install
+npm start
+```
+
+### Frontend
+```bash
+cd frontend
+npm install
+npm start
+```
+
+## Environment Variables
+
+### Backend (.env)
+```
+PORT=3001
+NODE_ENV=production
+```
+
+EOF
+
+# ---------------------------------------------
+# DEPLOYMENT INSTRUCTIONS
+# ---------------------------------------------
+
+echo "
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║  ✅ PROJECT STRUCTURE CREATED!                            ║
+║                                                            ║
+║  Next steps:                                              ║
+║  1. Copy server.js code to backend/server.js             ║
+║  2. Copy React app code to frontend/src/App.js           ║
+║  3. Test locally                                          ║
+║  4. Push to GitHub                                        ║
+║  5. Deploy to Render                                      ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+"
+
+# ---------------------------------------------
+# OPTIONAL: CREATE RENDER.YAML (Blueprint)
+# ---------------------------------------------
+cat > render.yaml << 'EOF'
+services:
+  # Backend API
+  - type: web
+    name: daily-manna-api
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    healthCheckPath: /api/health
+
+  # Frontend
+  - type: web
+    name: daily-manna-frontend
+    env: static
+    region: oregon
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/build
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+EOF
+
+echo "✅ render.yaml blueprint created!"
+echo "📝 This allows one-click deployment of both services"
